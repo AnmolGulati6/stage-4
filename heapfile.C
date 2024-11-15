@@ -15,8 +15,15 @@ const Status createHeapFile(const string fileName)
     status = db.openFile(fileName, file);
     if (status != OK)
     {
-		// file doesn't exist. First create it and allocate
-		// an empty header page and data page.
+        status = db.createFile(fileName); // make heapfile
+        if (status != OK) return status;
+
+        status = db.openFile(fileName, file); // open heapfile
+        if (status != OK) return status;
+
+        // try and alloc header page
+        status = bufMgr->allocPage(file, hdrPageNo, newPage); 
+        
 		
 		
 		
