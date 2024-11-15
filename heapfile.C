@@ -123,23 +123,27 @@ const Status HeapFile::getRecord(const RID & rid, Record & rec)
 
 
     // cout<< "getRecord. record (" << rid.pageNo << "." << rid.slotNo << ")" << endl;
-   if (rid.pageNo != curPageNo) {
-        statusOne = bufMgr-> unPinPage(filePtr, curPageNo, curDirtyFlag);
+   if (rid.pageNo != curPageNo) { // // check if the requested record's page number differs from the current page number
+        statusOne = bufMgr-> unPinPage(filePtr, curPageNo, curDirtyFlag); // If true, unpin the current page to release its buffer slot
+
         if (statusOne != OK){
             return statusOne;
         }
-        statusTwo = bufMgr->readPage(filePtr, rid.pageNo, curPage);
+        statusTwo = bufMgr->readPage(filePtr, rid.pageNo, curPage); // Read the page containing the requested record into memory
         if (statusTwo!= OK) {
             return statusTwo;
         }
-        curPageNo = rid.pageNo;
+        // Update the current page number and reset the dirty flag
+        curPageNo = rid.pageNo; 
         curDirtyFlag = false;
    }
+    // Get the record corresponding to the given RID
    statusThree = curPage-> getRecord(rid, rec);
    
    if (statusThree != OK) {
     return statusThree;
    }
+   // update RID
    curRec = rid;
    return OK;
 }
