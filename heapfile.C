@@ -4,41 +4,64 @@
 // routine to create a heapfile
 const Status createHeapFile(const string fileName)
 {
-    File* 		file;
-    Status 		status;
-    FileHdrPage*	hdrPage;
-    int			hdrPageNo;
-    int			newPageNo;
-    Page*		newPage;
+    File* file;
+    Status status;
+    FileHdrPage* hdrPage;
+    int hdrPageNo;
+    int newPageNo;
+    Page* newPage;
 
-    // try to open the file. This should return an error
+    // Try to open the file
     status = db.openFile(fileName, file);
     if (status != OK)
     {
-        status = db.createFile(fileName); // make heapfile
+        // Create the file if it does not exist
+        status = db.createFile(fileName);
         if (status != OK) return status;
 
-        status = db.openFile(fileName, file); // open heapfile
+        // Open the newly created file
+        status = db.openFile(fileName, file);
         if (status != OK) return status;
 
-        // try and alloc header page
-        status = bufMgr->allocPage(file, hdrPageNo, newPage); 
-        
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
+        // Allocate the header page
+        status = bufMgr->allocPage(file, hdrPageNo, newPage);
+        if (status != OK) return status;
+
+        // Initialize header page values
+        hdrPage = (FileHdrPage*)newPage;
+        strcpy(hdrPage->fileName, fileName.c_str());
+        hdrPage->firstPage = -1; // Initialize to -1 indicating no data pages yet
+        hdrPage->lastPage = -1;
+        hdrPage->pageCnt = 0;
+        hdrPage->recCnt = 0;
+
+        // Allocate the first data page
+        status = bufMgr->allocPage(file, newPageNo, newPage);
+        if (status != OK) return status;
+
+        // Initialize the first data page
+        newPage->init(newPageNo);
+
+        // Update header page information
+        hdrPage->firstPage = newPageNo;
+        hdrPage->lastPage = newPageNo;
+        hdrPage->pageCnt++;
+
+        // Unpin the header page and mark it as dirty
+        status = bufMgr->unPinPage(file, hdrPageNo, true);
+        if (status != OK) return status;
+
+        // Unpin the first data page and mark it as dirty
+        status = bufMgr->unPinPage(file, newPageNo, true);
+        if (status != OK) return status;
+
+        // Close the file
+        status = db.closeFile(file);
+        if (status != OK) return status;
+
+        return OK;
     }
-    return (FILEEXISTS);
+    return FILEEXISTS;
 }
 
 // routine to destroy a heapfile
