@@ -1,5 +1,12 @@
 {
     "files.associations": {
-        "heapfile.C": "cpp"
+        "heapfile.C": "cpp",
+        "page.C": "cpp",
+        "db.C": "cpp",
+        "bufHash.C": "cpp",
+        "iostream": "cpp",
+        "buf.C": "cpp",
+        "error.C": "cpp",
+        "testfile.C": "cpp"
     }
 }

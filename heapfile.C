@@ -108,7 +108,7 @@ HeapFile::HeapFile(const string & fileName, Status& returnStatus)
         curPageNo = headerPage->firstPage;
 
         // reading the first page of file into buffer pool
-        status = bufMgr->readPage(filePtr, headerPage->firstPage, pagePtr);
+        status = bufMgr->readPage(filePtr, curPageNo, pagePtr);
         if(status != OK) {
             cerr << "open of heap file failed\n";
             returnStatus = status;
@@ -299,10 +299,7 @@ const Status HeapFileScan::scanNext(RID& outRid)
     int 	nextPageNo;
     Record      rec;
 
-    
-	
-	
-	
+		
 	
 	
 	
