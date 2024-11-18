@@ -78,20 +78,46 @@ HeapFile::HeapFile(const string & fileName, Status& returnStatus)
 
     cout << "opening file " << fileName << endl;
 
+    File* filePtr;
     // open the file and read in the header page and the first data page
     if ((status = db.openFile(fileName, filePtr)) == OK)
-    {
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
+    {   
+        // initialize headerPageNo to -1
+        // this gets updated to a usable value in getFirstPage call
+		headerPageNo = -1;
+
+        // getting the first page number,
+        status = filePtr->getFirstPage((int&) headerPageNo);
+        if(status != OK) {
+            cerr << "open of heap file failed\n";
+            returnStatus = status;
+            return;
+        } 
+
+        // allocating the page into the buffer
+        status = bufMgr->readPage(filePtr, headerPageNo, pagePtr);
+        if(status != OK) {
+            cerr << "open of heap file failed\n";
+            returnStatus = status;
+            return; 
+        }
+        
+        // initializing private data members
+        headerPage = (FileHdrPage*) pagePtr;
+        hdrDirtyFlag = true; // maybe this is false?
+        curPageNo = headerPage->firstPage;
+
+        // reading the first page of file into buffer pool
+        status = bufMgr->readPage(filePtr, headerPage->firstPage, pagePtr);
+        if(status != OK) {
+            cerr << "open of heap file failed\n";
+            returnStatus = status;
+            return; 
+        }
+        
+        curPage = pagePtr;
+        curDirtyFlag = true;
+        curRec = NULLRID;
     }
     else
     {
