@@ -290,6 +290,20 @@ const Status HeapFileScan::resetScan()
     return OK;
 }
 
+/**
+ * Returns (via the outRid parameter) the RID of the next record that satisfies the scan predicate. 
+ * The basic idea is to scan the file one page at a time. For each page, use the firstRecord() and 
+ * nextRecord() methods of the Page class to get the rids of all the records on the page. Convert 
+ * the rid to a pointer to the record data and invoke matchRec() to determine if record satisfies 
+ * the filter associated with the scan. If so, store the rid in curRec and return curRec. To make 
+ * things fast, keep the current page pinned until all the records on the page have been processed. 
+ * Then continue with the next page in the file.  Since the HeapFileScan class is derived from the 
+ * HeapFile class it also has all the methods of the HeapFile class as well. Returns OK if no 
+ * errors occurred. Otherwise, return the error code of the first error that occurred.
+ * 
+ * TIPS: It is always a good idea to check if curPage is NULL, and if so, then how to handle that 
+ * case.
+*/
 
 const Status HeapFileScan::scanNext(RID& outRid)
 {
@@ -299,13 +313,83 @@ const Status HeapFileScan::scanNext(RID& outRid)
     int 	nextPageNo;
     Record      rec;
 
-		
-	
-	
-	
-	
-	
-	
+    // just to make sure we're not infinitely looping while debugging:
+    int loopCounter = 0;
+
+    while (status == OK) {
+        
+        while (curPage == NULL) {
+            // should i not unpin curPage before getting next page?
+            status = bufMgr->unPinPage(filePtr, curPageNo, curDirtyFlag);
+            if (status != OK)
+                return status;
+
+            status = curPage->getNextPage(curPageNo);
+            if (status != OK)
+                return status; 
+
+            status = bufMgr->readPage(filePtr, nextPageNo, curPage);
+            if (status != OK) 
+                return status;
+        
+        }
+
+        // scan page one file at a time with firstRecord() and nextRecord()
+        status = curPage->firstRecord(tmpRid);
+        if (status != OK)
+            return status;
+
+        status = curPage->getRecord(tmpRid, rec);
+        if (status != OK)
+            return status;
+
+        // use matchRec() to see if matched.
+        if (matchRec(rec)) {
+            outRid = tmpRid;
+            return OK;
+        }
+        
+        // loop over all records on page
+        status = curPage->nextRecord(tmpRid, nextRid);
+        while (status != ENDOFPAGE) {
+            status = curPage->getRecord(nextRid, rec);
+            if (status != OK) 
+                return status;
+            
+            if (matchRec(rec)) {
+                outRid = tmpRid;
+                return OK;
+            }
+
+            tmpRid = nextRid;
+            status = curPage->nextRecord(tmpRid, nextRid);
+        }
+
+        // if page has been fully scanned with no matching records, go next page
+        status = bufMgr->unPinPage(filePtr, curPageNo, curDirtyFlag); // should i unpin?
+        if (status != OK)
+            return status;
+            
+        status = curPage->getNextPage(curPageNo);
+        if (status != OK)
+            return status; 
+
+        status = bufMgr->readPage(filePtr, nextPageNo, curPage);
+        if (status != OK) 
+            return status;
+        
+        // debugging making sure no infinite loop
+        loopCounter++;
+        if (loopCounter % 10 == 0) {
+            cout << "loop counter: " + loopCounter << endl;
+            if (loopCounter > 100) {
+                return RECNOTFOUND;
+            }
+        }
+    }
+
+    // shouldn't reach this point
+    return status;
 }
 
 
