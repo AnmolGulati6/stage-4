@@ -513,18 +513,51 @@ const Status InsertFileScan::insertRecord(const Record & rec, RID& outRid)
         return INVALIDRECLEN;
     }
 
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
+  if (curPage == NULL) {
+    // deal with the last page
+    curPageNo = headerPage->lastPage;
+    status = bufMgr->readPage(filePtr, curPageNo, curPage);
+    if(status != OK) return status;
+
+    status = curPage->insertRecord(rec, outRid);
+    if(status != OK) return status;
+
+    // bookkeeping
+    curRec = outRid;
+    curDirtyFlag = true;
+    hdrDirtyFlag = true;
+    headerPage->lastPage = curPageNo; // this may be buggy
+    headerPage->recCnt++;
+    return OK;
+  } else {
+    // just insert the page
+    status = curPage->insertRecord(rec, outRid);
+    if(status == NOSPACE) {
+        // create a new page
+        // how do I determine newPageNo?
+        newPageNo = curPageNo + 1;
+        status = bufMgr->allocPage(filePtr, newPageNo, newPage);
+        if(status != OK) return status;
+        status = curPage->setNextPage(newPageNo);
+        if(status != OK) return status;
+        curPage = newPage;
+        curPageNo = newPageNo;
+        headerPage->lastPage = newPageNo;
+        
+        // update the header
+        status = curPage->insertRecord(rec, outRid);
+        if(status != OK) return status;
+
+        curRec = outRid;
+        curDirtyFlag = true;
+        hdrDirtyFlag = true;
+        headerPage->lastPage = curPageNo; // this may be buggy
+        headerPage->recCnt++; 
+        return OK;
+    } else {
+        return status;
+    }
+  }
 }
 
 
