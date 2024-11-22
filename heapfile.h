@@ -14,7 +14,7 @@ using namespace std;
 extern DB db;
 
 // define if debug output wanted
-//#define DEBUGREL
+#define DEBUGREL
 
 // Some constant definitions
 const unsigned MAXNAMESIZE = 50;
