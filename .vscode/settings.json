@@ -7,6 +7,7 @@
         "iostream": "cpp",
         "buf.C": "cpp",
         "error.C": "cpp",
-        "testfile.C": "cpp"
+        "testfile.C": "cpp",
+        "test.C": "cpp"
     }
 }

@@ -30,10 +30,10 @@ const Status createHeapFile(const string fileName)
         // Initialize header page values
         hdrPage = (FileHdrPage*)newPage;
         strcpy(hdrPage->fileName, fileName.c_str());
-        hdrPage->firstPage = -1; // Initialize to -1 indicating no data pages yet
-        hdrPage->lastPage = -1;
-        hdrPage->pageCnt = 0;
-        hdrPage->recCnt = 0;
+        // hdrPage->firstPage = -1; // Initialize to -1 indicating no data pages yet
+        // hdrPage->lastPage = -1;
+        // hdrPage->pageCnt = 0;
+        // hdrPage->recCnt = 0;
 
         // Allocate the first data page
         status = bufMgr->allocPage(file, newPageNo, newPage);
@@ -45,7 +45,8 @@ const Status createHeapFile(const string fileName)
         // Update header page information
         hdrPage->firstPage = newPageNo;
         hdrPage->lastPage = newPageNo;
-        hdrPage->pageCnt++;
+        hdrPage->pageCnt = 1;
+        hdrPage->recCnt = 0;
 
         // Unpin the header page and mark it as dirty
         status = bufMgr->unPinPage(file, hdrPageNo, true);
@@ -56,6 +57,8 @@ const Status createHeapFile(const string fileName)
         if (status != OK) return status;
 
         // Close the file
+        status = bufMgr->flushFile(file);
+        if (status != OK) return status;
         status = db.closeFile(file);
         if (status != OK) return status;
 
@@ -78,16 +81,11 @@ HeapFile::HeapFile(const string & fileName, Status& returnStatus)
 
     cout << "opening file " << fileName << endl;
 
-    File* filePtr;
     // open the file and read in the header page and the first data page
     if ((status = db.openFile(fileName, filePtr)) == OK)
     {   
-        // initialize headerPageNo to -1
-        // this gets updated to a usable value in getFirstPage call
-		headerPageNo = -1;
-
-        // getting the first page number,
-        status = filePtr->getFirstPage((int&) headerPageNo);
+        // get header page number
+        status = filePtr->getFirstPage(headerPageNo);
         if(status != OK) {
             cerr << "open of heap file failed\n";
             returnStatus = status;
@@ -104,7 +102,7 @@ HeapFile::HeapFile(const string & fileName, Status& returnStatus)
         
         // initializing private data members
         headerPage = (FileHdrPage*) pagePtr;
-        hdrDirtyFlag = true; // maybe this is false?
+        hdrDirtyFlag = false; 
         curPageNo = headerPage->firstPage;
 
         // reading the first page of file into buffer pool
@@ -115,9 +113,10 @@ HeapFile::HeapFile(const string & fileName, Status& returnStatus)
             return; 
         }
         
-        curPage = pagePtr;
-        curDirtyFlag = true;
+        // curPage = pagePtr;
+        curDirtyFlag = false;
         curRec = NULLRID;
+        returnStatus = OK;
     }
     else
     {
@@ -487,7 +486,7 @@ const Status InsertFileScan::insertRecord(const Record & rec, RID& outRid)
         return INVALIDRECLEN;
     }
 
-  if (curPage == NULL) {
+  if (curPage == NULL || curPageNo != headerPage->lastPage) {
     // deal with the last page
     curPageNo = headerPage->lastPage;
     status = bufMgr->readPage(filePtr, curPageNo, curPage);
@@ -508,11 +507,19 @@ const Status InsertFileScan::insertRecord(const Record & rec, RID& outRid)
     status = curPage->insertRecord(rec, outRid);
     if(status == NOSPACE) {
         // create a new page
-        curPage->getNextPage(newPageNo);
+        // curPage->getNextPage(newPageNo);
+        cout << "alloc page" << endl;
         status = bufMgr->allocPage(filePtr, newPageNo, newPage);
         if(status != OK) return status;
+
+        cout << "setnext page" << endl;
         status = curPage->setNextPage(newPageNo);
         if(status != OK) return status;
+
+        cout << "getnext page" << endl;
+        status = curPage->getNextPage(newPageNo);
+        if (status != OK) return status;
+        
         curPage = newPage;
         curPageNo = newPageNo;
         headerPage->lastPage = newPageNo;
