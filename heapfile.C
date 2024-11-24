@@ -307,73 +307,78 @@ const Status HeapFileScan::scanNext(RID& outRid)
     RID		nextRid;
     RID		tmpRid;
     int 	nextPageNo;
-    Record      rec;
+    Record  rec;
+    bool    recLoop  = false;
+    bool    pageLoop = false;
+   
+    // if curPage is NULL, start from page 1
+    if (curPage == NULL) {
+        curPageNo = headerPage->firstPage;
+        if (curPageNo == -1) return FILEEOF;
 
-    // just to make sure we're not infinitely looping while debugging:
-    int loopCounter = 0;
+        status = bufMgr->readPage(filePtr, curPageNo, curPage);
+        if (status != OK) return status;
 
-    while (status == OK) {
-        
-        while (curPage == NULL) {
-            // should i unpin curPage before getting next page?
+        curDirtyFlag = false;
+        status = curPage->firstRecord(tmpRid);
+        curRec = tmpRid;
+
+        // checks if there are records on the page
+        if (status == NORECORDS)
+        {
+            // if page 1 is empty, unpin and return FILEEOF
             status = bufMgr->unPinPage(filePtr, curPageNo, curDirtyFlag);
             if (status != OK) return status;
-
-            status = curPage->getNextPage(nextPageNo);
-            if (status != OK) return status; 
-
-            status = bufMgr->readPage(filePtr, nextPageNo, curPage);
-            if (status != OK) return status;
-        
+            curPage = NULL;
+            curPageNo = -1;
+            curDirtyFlag = false;
+            return FILEEOF;
         }
-
-        // scan page one file at a time with firstRecord() and nextRecord()
-        status = curPage->firstRecord(tmpRid);
-        if (status != OK) return status;
 
         status = curPage->getRecord(tmpRid, rec);
         if (status != OK) return status;
 
-        // use matchRec() to see if matched.
+        if (matchRec(rec))
+        {
+            outRid = tmpRid;
+            return OK;
+        }
+    }
+
+    // otherwise, start where we left off last time, scan pages one record at a time
+    while (!recLoop) {
+        status = curPage->nextRecord(curRec, nextRid);
+        if (status == OK) curRec = nextRid;
+        while (status != OK) {
+            curPage->getNextPage(nextPageNo);
+            if (nextPageNo == -1) return FILEEOF;
+
+            // unpin page, do bookkeeping
+            status = bufMgr->unPinPage(filePtr, curPageNo, curDirtyFlag);
+            curPage = NULL;
+            curPageNo = -1;
+            curDirtyFlag = false;
+            if (status != OK) return status;
+
+            curPageNo = nextPageNo;
+            status = bufMgr->readPage(filePtr, curPageNo, curPage);
+            if (status != OK) return status;
+            // checks if there are records in the page, if not loops again to next page
+            status = curPage->firstRecord(curRec);
+        }
+
+        status = curPage->getRecord(tmpRid, rec);
+        if (status != OK) return status;
+
+        // use matchRec to see if matched.
+        curRec = tmpRid;
+        bool recLoop = false;
         if (matchRec(rec)) {
             outRid = tmpRid;
             return OK;
         }
-        
-        // loop over all records on page
-        status = curPage->nextRecord(tmpRid, nextRid);
-        while (status != ENDOFPAGE) {
-            status = curPage->getRecord(nextRid, rec);
-            if (status != OK) return status;
-            
-            if (matchRec(rec)) {
-                outRid = tmpRid;
-                return OK;
-            }
-
-            tmpRid = nextRid;
-            status = curPage->nextRecord(tmpRid, nextRid);
-        }
-
-        // if page has been fully scanned with no matching records, go next page
-        status = bufMgr->unPinPage(filePtr, curPageNo, false); // untouched, shouldn't be dirty
-        if (status != OK) return status;
-            
-        status = curPage->getNextPage(nextPageNo);
-        if (status != OK) return status; 
-
-        status = bufMgr->readPage(filePtr, nextPageNo, curPage);
-        if (status != OK) return status;
-        
-        // debugging making sure no infinite loop
-        loopCounter++;
-        if (loopCounter % 10 == 0) {
-            cout << "loop counter: " << loopCounter << endl;
-            if (loopCounter > 100) return RECNOTFOUND;
-        }
     }
 
-    // shouldn't reach this point
     return status;
 }
 
