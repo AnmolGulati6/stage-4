@@ -99,11 +99,16 @@ HeapFile::HeapFile(const string & fileName, Status& returnStatus)
             returnStatus = status;
             return; 
         }
+
+        // cout << "Page count: " + std::to_string(headerPageNo) + "\n";
+
         
         // initializing private data members
         headerPage = (FileHdrPage*) pagePtr;
-        hdrDirtyFlag = false; 
+        hdrDirtyFlag = true; 
         curPageNo = headerPage->firstPage;
+        // cout << "Page count: " + std::to_string(headerPage->pageCnt) + "\n";
+        // cout << "Record count: " + std::to_string(headerPage->recCnt) + "\n";
 
         // reading the first page of file into buffer pool
         status = bufMgr->readPage(filePtr, curPageNo, pagePtr);
@@ -113,7 +118,7 @@ HeapFile::HeapFile(const string & fileName, Status& returnStatus)
             return; 
         }
         
-        // curPage = pagePtr;
+        curPage = pagePtr;
         curDirtyFlag = false;
         curRec = NULLRID;
         returnStatus = OK;
@@ -181,6 +186,7 @@ const Status HeapFile::getRecord(const RID & rid, Record & rec)
    if (rid.pageNo != curPageNo) { // // check if the requested record's page number differs from the current page number
         statusOne = bufMgr-> unPinPage(filePtr, curPageNo, curDirtyFlag); // If true, unpin the current page to release its buffer slot
 
+        //cout << "I am here\n";
         if (statusOne != OK){
             return statusOne;
         }
@@ -193,6 +199,12 @@ const Status HeapFile::getRecord(const RID & rid, Record & rec)
         curDirtyFlag = false;
    }
     // Get the record corresponding to the given RID
+    // cout << "I am actually here!\n";
+    // cout << "Current page number = " + std::to_string(curPageNo) + "\n";
+    // cout << "Record ID pageNo = " + std::to_string(rid.pageNo) + "\n";
+    // cout << "Record ID slotNo = " + std::to_string(rid.slotNo) + "\n";
+    // RID dummyRID;
+    // cout << "current page details = " + std::to_string((curPage->firstRecord(dummyRID)));
    statusThree = curPage-> getRecord(rid, rec);
    
    if (statusThree != OK) {
@@ -486,58 +498,57 @@ const Status InsertFileScan::insertRecord(const Record & rec, RID& outRid)
         return INVALIDRECLEN;
     }
 
-  if (curPage == NULL || curPageNo != headerPage->lastPage) {
-    // deal with the last page
-    curPageNo = headerPage->lastPage;
-    status = bufMgr->readPage(filePtr, curPageNo, curPage);
-    if(status != OK) return status;
+    if (curPage == NULL) {
+        // deal with the last page
+        curPageNo = headerPage->lastPage;
+        status = bufMgr->unPinPage(filePtr, curPageNo, true);
+        if (status != OK) return status;
+        status = bufMgr->readPage(filePtr, curPageNo, curPage);
+        if(status != OK) return status;
+    }
 
-    status = curPage->insertRecord(rec, outRid);
-    if(status != OK) return status;
-
-    // bookkeeping
-    curRec = outRid;
-    curDirtyFlag = true;
-    hdrDirtyFlag = true;
-    headerPage->lastPage = curPageNo; // this may be buggy
-    headerPage->recCnt++;
-    return OK;
-  } else {
-    // just insert the page
     status = curPage->insertRecord(rec, outRid);
     if(status == NOSPACE) {
         // create a new page
         // curPage->getNextPage(newPageNo);
-        cout << "alloc page" << endl;
         status = bufMgr->allocPage(filePtr, newPageNo, newPage);
         if(status != OK) return status;
 
-        cout << "setnext page" << endl;
+        newPage->init(newPageNo);
+
         status = curPage->setNextPage(newPageNo);
         if(status != OK) return status;
 
-        cout << "getnext page" << endl;
-        status = curPage->getNextPage(newPageNo);
+        status = bufMgr->unPinPage(filePtr, curPageNo, true);
         if (status != OK) return status;
-        
+
         curPage = newPage;
         curPageNo = newPageNo;
+
+        // cout << "getnext page" << endl;
+        // status = curPage->getNextPage(newPageNo);
+        // if (status != OK) return status;
+        
+        // curPage = newPage;
+        // curPageNo = newPageNo;
         headerPage->lastPage = newPageNo;
+        headerPage->pageCnt++;
         
         // update the header
-        status = curPage->insertRecord(rec, outRid);
+        status = newPage->insertRecord(rec, outRid);
         if(status != OK) return status;
+    } else if (status != OK) { return status; }
 
-        curRec = outRid;
-        curDirtyFlag = true;
-        hdrDirtyFlag = true;
-        headerPage->lastPage = curPageNo; // this may be buggy
-        headerPage->recCnt++; 
-        return OK;
-    } else {
-        return status;
-    }
-  }
-}
+    // cout << "here!\n";
+    curRec = outRid;
+    outRid.pageNo = curPageNo;
+    // cout << "Record page number = " + std::to_string(curRec.pageNo) + "\n";
+    // cout << "Record slot number = " + std::to_string(curRec.slotNo) + "\n";
+    // cout << "curPageNo = " + std::to_string(curPageNo) + "\n";
+    curDirtyFlag = true;
+    hdrDirtyFlag = true;
+    headerPage->recCnt++; 
+    // cout << "Number of pages = " + std::to_string(headerPage->pageCnt) + "\n";
+    return OK;}
 
 
